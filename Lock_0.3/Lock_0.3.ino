@@ -58,6 +58,8 @@ void setup() {
     Serial.print(i); Serial.print(": "); Serial.print(uids[i]); Serial.print("\n");
   }
   Serial.println("Swipe card...\n");
+  delay(500);
+  requestHouses();
 }
 
 void serialRX(){
@@ -68,41 +70,41 @@ void serialRX(){
   while(Serial.available()>0 && !newData){
     rb = Serial.read(); 
     serialBuffer[idx] = rb;
-//    if(serialBuffer[0] == 'A' && serialBuffer[1] == 'T'){
-//      writeToESP = true;
-//    }
     idx++;
     if(idx == bufferSize){
-        inputString += (char*)serialBuffer;
-        //Serial.write((char*)serialBuffer);       
+        inputString += (char*)serialBuffer;  
         idx = 0;
-        memset(serialBuffer, 0, sizeof(serialBuffer));
+        memset(serialBuffer, 0, bufferSize);
     }
     if(rb == '\n'){
       inputString += (char*)serialBuffer;      
       idx = 0;
-      memset(serialBuffer, 0, sizeof(serialBuffer));
+      memset(serialBuffer, 0, bufferSize);
       newData = true;
     }
+    delay(10);
   }
 }
 void espRX(){
-  while(ESP.available()>0 && !newData){
+  while(ESP.available()>0){
     Serial.write(ESP.read());
+    delay(10);
   }
 }
 
 void handleNewData(){
   String fetch = "fetch:";
+  String esp = "esp>>";
   if(newData){
     if(inputString.indexOf(fetch) == 0){
-      String cmd = inputString.substring(fetch.length(),inputString.length());
-      Serial.println("requesting site: " + cmd);
-      requestSite(cmd);
+      requestHouses();
+    } else if(inputString.indexOf(esp)==0){
+      String cmd = inputString.substring(esp.length(),inputString.length());
+      ESP.print(cmd);
     } else {
       Serial.println(inputString);
     }
-  }
+  } 
   newData = false;
   inputString = "";
 }
@@ -192,18 +194,41 @@ void findKeyword(String){
   
 }
 
-void requestSite(String host){
-  String cmdCipmux = "AT+CIPMUX=1\r\n";
-  String cmdCipstart = "AT+CIPSTART=1,\"TCP\",\""+host+",80";
-  String cmdCipsend = "AT+CIPSEND=1,44\r\n";
-  String cmdGet = "GET / HTTP/1.1\r\nHost: www.google.co.uk\r\n\r\n\r\n";
-  ESP.print(cmdCipmux);
+void requestHouses(){
+  String cmdCipsend = "AT+CIPSEND=1,42\r\n";
+  String cmdGet = "GET / HTTP/1.1\r\nHost: lockserver.herokuapp.com\r\n\r\n\r\n";
+  ESP.write("AT+CIPMUX=1\r\n");
   delay(500);
-  ESP.print(cmdCipstart);
+  ESP.write("AT+CIPSTART=1,\"TCP\",\"lockserver.herokuapp.com\",80\r\n");
   delay(500);
-  ESP.print(cmdCipsend);
+  ESP.write("AT+CIPSEND=1,58\r\n");
   delay(500);
-  ESP.print(cmdGet);
+  ESP.write("GET /houses HTTP/1.1\r\nHost: lockserver.herokuapp.com\r\n\r\n\r\n");
   delay(500);
+  ESP.write("AT+CIPCLOSE=1\r\n");
+}
+
+void postToServer(){
+  ESP.println("AT+CIPMUX=1");
+  delay(500);
+  ESP.write("AT+CIPSTART=1,\"TCP\",\"");
+  delay(50);
+  ESP.write("lockserver.herokuapp.com\",80");
+  delay(500);
+  ESP.println("AT+CIPSEND=1,42\r\n");
+  delay(500);
+  ESP.println("POST /iot/v1 HTTP/1.1\r\nHost: www.google.com");
+  delay(500);
+  ESP.println("AT+CIPCLOSE=1\r\n");
+
+//  client.println("POST /tinyFittings/index.php HTTP/1.1");
+//  client.println("Host:  artiswrong.com");
+//  client.println("User-Agent: Arduino/1.0");
+//  client.println("Connection: close");
+//  client.println("Content-Type: application/x-www-form-urlencoded;");
+//  client.print("Content-Length: ");
+//  client.println(PostData.length());
+//  client.println();
+//  client.println(PostData);
 }
 

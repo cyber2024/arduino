@@ -48,8 +48,7 @@ What works and not?
   #. Communication with smart phone, not `supported by hardware`_.
   #. Card emulation, not `supported by hardware`_.
   #. Use of IRQ pin. But there is a proof-of-concept example.
-  #. With Arduino Yun see `#111 <https://github.com/miguelbalboa/rfid/issues/111>`_, not supported by software.
-  #. With Intel Galileo (Gen2) see `#310 <https://github.com/miguelbalboa/rfid/issues/310>`__, not supported by software.
+  #. With Arduino Yun like `#111 <https://github.com/miguelbalboa/rfid/issues/111>`_, not supported by software.
   #. Power reduction modes `#269 <https://github.com/miguelbalboa/rfid/issues/269>`_, not supported by software.
   #. I2C instead of SPI `#240 <https://github.com/miguelbalboa/rfid/issues/240>`_, not supported by software.
   #. UART instead of SPI `#281 <https://github.com/miguelbalboa/rfid/issues/281>`_, not supported by software.
@@ -81,7 +80,6 @@ Some user made some patches/suggestions/ports for other boards:
 * Linux: https://github.com/miguelbalboa/rfid/pull/216
 * chipKIT: https://github.com/miguelbalboa/rfid/pull/230
 * ESP8266 (native): https://github.com/miguelbalboa/rfid/pull/235
-* ESP8266 nonos sdk: https://github.com/mmmmar/esp8266-mfrc522
 * LPCOPen (in C): https://github.com/miguelbalboa/rfid/pull/258
 
 Note that the main target/support of library is still Arduino.
