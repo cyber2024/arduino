@@ -1,24 +1,21 @@
-// Copyright Benoit Blanchon 2014-2017
+// ArduinoJson - arduinojson.org
+// Copyright Benoit Blanchon 2014-2019
 // MIT License
-//
-// Arduino JSON library
-// https://bblanchon.github.io/ArduinoJson/
-// If you like this project, please add a star!
 
 #pragma once
 
 #include <stdint.h>
 #include <stdlib.h>  // for size_t
 #include "../Configuration.hpp"
+#include "../Polyfills/alias_cast.hpp"
 #include "../Polyfills/math.hpp"
 
 namespace ArduinoJson {
-namespace TypeTraits {
+namespace Internals {
 
 template <typename T, size_t = sizeof(T)>
 struct FloatTraits {};
 
-#if ARDUINOJSON_DOUBLE_IS_64BITS
 template <typename T>
 struct FloatTraits<T, 8 /*64bits*/> {
   typedef int64_t mantissa_type;
@@ -31,29 +28,81 @@ struct FloatTraits<T, 8 /*64bits*/> {
 
   template <typename TExponent>
   static T make_float(T m, TExponent e) {
-    if (e >= 0)
-      return m * (e & 1 ? 1e1 : 1) * (e & 2 ? 1e2 : 1) * (e & 4 ? 1e4 : 1) *
-             (e & 8 ? 1e8 : 1) * (e & 16 ? 1e16 : 1) * (e & 32 ? 1e32 : 1) *
-             (e & 64 ? 1e64 : 1) * (e & 128 ? 1e128 : 1) *
-             (e & 256 ? 1e256 : 1);
-    e = TExponent(-e);
-    return m * (e & 1 ? 1e-1 : 1) * (e & 2 ? 1e-2 : 1) * (e & 4 ? 1e-4 : 1) *
-           (e & 8 ? 1e-8 : 1) * (e & 16 ? 1e-16 : 1) * (e & 32 ? 1e-32 : 1) *
-           (e & 64 ? 1e-64 : 1) * (e & 128 ? 1e-128 : 1) *
-           (e & 256 ? 1e-256 : 1);
+    if (e > 0) {
+      for (uint8_t index = 0; e != 0; index++) {
+        if (e & 1) m *= positiveBinaryPowerOfTen(index);
+        e >>= 1;
+      }
+    } else {
+      e = TExponent(-e);
+      for (uint8_t index = 0; e != 0; index++) {
+        if (e & 1) m *= negativeBinaryPowerOfTen(index);
+        e >>= 1;
+      }
+    }
+    return m;
+  }
+
+  static T positiveBinaryPowerOfTen(int index) {
+    static T factors[] = {
+        1e1,
+        1e2,
+        1e4,
+        1e8,
+        1e16,
+        forge(0x4693B8B5, 0xB5056E17),  // 1e32
+        forge(0x4D384F03, 0xE93FF9F5),  // 1e64
+        forge(0x5A827748, 0xF9301D32),  // 1e128
+        forge(0x75154FDD, 0x7F73BF3C)   // 1e256
+    };
+    return factors[index];
+  }
+
+  static T negativeBinaryPowerOfTen(int index) {
+    static T factors[] = {
+        forge(0x3FB99999, 0x9999999A),  // 1e-1
+        forge(0x3F847AE1, 0x47AE147B),  // 1e-2
+        forge(0x3F1A36E2, 0xEB1C432D),  // 1e-4
+        forge(0x3E45798E, 0xE2308C3A),  // 1e-8
+        forge(0x3C9CD2B2, 0x97D889BC),  // 1e-16
+        forge(0x3949F623, 0xD5A8A733),  // 1e-32
+        forge(0x32A50FFD, 0x44F4A73D),  // 1e-64
+        forge(0x255BBA08, 0xCF8C979D),  // 1e-128
+        forge(0x0AC80628, 0x64AC6F43)   // 1e-256
+    };
+    return factors[index];
+  }
+
+  static T negativeBinaryPowerOfTenPlusOne(int index) {
+    static T factors[] = {
+        1e0,
+        forge(0x3FB99999, 0x9999999A),  // 1e-1
+        forge(0x3F50624D, 0xD2F1A9FC),  // 1e-3
+        forge(0x3E7AD7F2, 0x9ABCAF48),  // 1e-7
+        forge(0x3CD203AF, 0x9EE75616),  // 1e-15
+        forge(0x398039D6, 0x65896880),  // 1e-31
+        forge(0x32DA53FC, 0x9631D10D),  // 1e-63
+        forge(0x25915445, 0x81B7DEC2),  // 1e-127
+        forge(0x0AFE07B2, 0x7DD78B14)   // 1e-255
+    };
+    return factors[index];
   }
 
   static T nan() {
-    uint64_t x = uint64_t(0x7ff8) << 48;
-    return *reinterpret_cast<T*>(&x);
+    return forge(0x7ff80000, 0x00000000);
   }
 
   static T inf() {
-    uint64_t x = uint64_t(0x7ff0) << 48;
-    return *reinterpret_cast<T*>(&x);
+    return forge(0x7ff00000, 0x00000000);
+  }
+
+  // constructs a double floating point values from its binary representation
+  // we use this function to workaround platforms with single precision literals
+  // (for example, when -fsingle-precision-constant is passed to GCC)
+  static T forge(uint32_t msb, uint32_t lsb) {
+    return alias_cast<T>((uint64_t(msb) << 32) | lsb);
   }
 };
-#endif
 
 template <typename T>
 struct FloatTraits<T, 4 /*32bits*/> {
@@ -67,23 +116,47 @@ struct FloatTraits<T, 4 /*32bits*/> {
 
   template <typename TExponent>
   static T make_float(T m, TExponent e) {
-    if (e > 0)
-      return m * (e & 1 ? 1e1f : 1) * (e & 2 ? 1e2f : 1) * (e & 4 ? 1e4f : 1) *
-             (e & 8 ? 1e8f : 1) * (e & 16 ? 1e16f : 1) * (e & 32 ? 1e32f : 1);
-    e = -e;
-    return m * (e & 1 ? 1e-1f : 1) * (e & 2 ? 1e-2f : 1) * (e & 4 ? 1e-4f : 1) *
-           (e & 8 ? 1e-8f : 1) * (e & 16 ? 1e-16f : 1) * (e & 32 ? 1e-32f : 1);
+    if (e > 0) {
+      for (uint8_t index = 0; e != 0; index++) {
+        if (e & 1) m *= positiveBinaryPowerOfTen(index);
+        e >>= 1;
+      }
+    } else {
+      e = -e;
+      for (uint8_t index = 0; e != 0; index++) {
+        if (e & 1) m *= negativeBinaryPowerOfTen(index);
+        e >>= 1;
+      }
+    }
+    return m;
+  }
+
+  static T positiveBinaryPowerOfTen(int index) {
+    static T factors[] = {1e1f, 1e2f, 1e4f, 1e8f, 1e16f, 1e32f};
+    return factors[index];
+  }
+
+  static T negativeBinaryPowerOfTen(int index) {
+    static T factors[] = {1e-1f, 1e-2f, 1e-4f, 1e-8f, 1e-16f, 1e-32f};
+    return factors[index];
+  }
+
+  static T negativeBinaryPowerOfTenPlusOne(int index) {
+    static T factors[] = {1e0f, 1e-1f, 1e-3f, 1e-7f, 1e-15f, 1e-31f};
+    return factors[index];
+  }
+
+  static T forge(uint32_t bits) {
+    return alias_cast<T>(bits);
   }
 
   static T nan() {
-    uint32_t x = 0x7fc00000;
-    return *reinterpret_cast<T*>(&x);
+    return forge(0x7fc00000);
   }
 
   static T inf() {
-    uint32_t x = 0x7f800000;
-    return *reinterpret_cast<T*>(&x);
+    return forge(0x7f800000);
   }
 };
-}
-}
+}  // namespace Internals
+}  // namespace ArduinoJson
